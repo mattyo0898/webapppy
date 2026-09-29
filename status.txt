@@ -1,2 +1,2 @@
-True, True, True, False
-2026-09-29 15:03:40
+True, True, False, False
+2026-09-29 15:03:46
