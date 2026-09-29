@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>リアルタイム空席状況</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; background: #121212; color: #ffffff; padding: 20px; margin: 0; }
+    h1 { font-size: 1.5rem; margin-bottom: 20px; color: #eeeeee; }
+    .container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; max-width: 400px; margin: 0 auto; }
+    .card { padding: 25px 10px; border-radius: 16px; font-weight: bold; font-size: 1.3rem; transition: all 0.5s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .vacant { background-color: #2e7d32; color: #e8f5e9; border: 2px solid #4caf50; } /* シックな緑: 空席 */
+    .occupied { background-color: #c62828; color: #ffebee; border: 2px solid #ef5350; } /* シックな赤: 満席 */
+    .count-box { font-size: 1.1rem; margin: 25px auto 10px; padding: 10px; background: #1e1e1e; border-radius: 10px; max-width: 380px; }
+    .time { color: #888888; font-size: 0.8rem; margin-top: 15px; }
+  </style>
+</head>
+<body>
+  <h1>🪑 リアルタイムカウンター空席状況</h1>
+  <div id="seats" class="container">読み込み中...</div>
+  <div id="count" class="count-box">データ取得中...</div>
+  <div id="update-time" class="time"></div>
+
+  <script>
+    // GitHub ユーザー名を mattyo0898 に設定済み
+    const GITHUB_USER = "mattyo0898"; 
+    const STATUS_URL = `https://raw.githubusercontent.com/${GITHUB_USER}/webapppy/main/status.txt`;
+
+    async function fetchStatus() {
+      try {
+        // キャッシュを防ぐためにタイムスタンプを付与して取得
+        const response = await fetch(STATUS_URL + '?t=' + new Date().getTime());
+        if (!response.ok) throw new Error('データ取得失敗');
+        const text = await response.text();
+        const lines = text.trim().split('\n');
+        
+        // データ解析 ("True, True, False, True" の形式)
+        const statuses = lines[0].split(',').map(s => s.trim().toLowerCase() === 'true');
+        const timeStr = lines[1] || '';
+
+        const container = document.getElementById('seats');
+        container.innerHTML = '';
+        let vacantCount = 0;
+
+        statuses.forEach((isVacant, idx) => {
+          if (isVacant) vacantCount++;
+          const card = document.createElement('div');
+          card.className = `card ${isVacant ? 'vacant' : 'occupied'}`;
+          card.innerHTML = `席 ${idx + 1}<br><br>${isVacant ? '空席' : '満席'}`;
+          container.appendChild(card);
+        });
+
+        document.getElementById('count').innerHTML = `📊 空席数: <strong>4 席中 ${vacantCount} 席</strong>`;
+        document.getElementById('update-time').innerText = '最終更新: ' + timeStr;
+      } catch (err) {
+        document.getElementById('seats').innerText = 'データの読み込みに失敗しました。';
+      }
+    }
+
+    // 初回実行 ＆ 3秒ごとの自動更新
+    fetchStatus();
+    setInterval(fetchStatus, 3000);
+  </script>
+</body>
+</html>
