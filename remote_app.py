@@ -8,6 +8,7 @@ import streamlit as st
 # ページ基本設定
 st.set_page_config(
     page_title="店舗リアルタイム座席状況",
+    page_icon="🪑",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -15,7 +16,6 @@ st.set_page_config(
 st.title("店舗リアルタイム座席状況（間取り図）")
 
 # 1. GitHub API / Raw ファイル取得設定
-# ※キャッシュ対策のため、URL末尾にタイムスタンプを付与して取得します
 STATUS_URL = (
     "https://raw.githubusercontent.com/mattyo0898/webapppy/main/status.txt"
 )
@@ -24,7 +24,7 @@ STATUS_URL = (
 def fetch_latest_status():
     """GitHubから最新の status.txt を取得（キャッシュ破棄処理付き）"""
     try:
-        # キャッシュバスター（URLにユニークなパラメータを付与して最新を取得）
+        # キャッシュバスター（URLにタイムスタンプを付与して常に最新データを取得）
         cache_buster_url = f"{STATUS_URL}?t={int(time.time())}"
         headers = {
             "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -78,8 +78,7 @@ for idx, is_empty in enumerate(seat_statuses):
 st.divider()
 
 # 視覚的な間取り図ブロックの描画（背景グラフィック表示）
-# 640x200 の簡易間取り図キャンバスを作成
-floor_plan = np.full((200, 640, 3), 245, dtype=np.uint8)  # 薄いグレーの背景
+floor_plan = np.full((200, 640, 3), 245, dtype=np.uint8)  # 薄いグレー背景
 w_quarter = 640 // 4
 
 # 4つの座席区画と枠線・テキストを描画
@@ -87,8 +86,7 @@ for i in range(4):
     x1 = i * w_quarter
     x2 = (i + 1) * w_quarter
 
-    # 各区画のステータス色設定 (BGR)
-    # 空席: 緑 (100, 200, 100), 使用中: 赤 (100, 100, 230)
+    # 各区画のステータス色設定 (BGR) -> 空席: 緑, 使用中: 赤
     color = (100, 200, 100) if seat_statuses[i] else (100, 100, 230)
 
     # 席の領域を描画
@@ -126,6 +124,10 @@ st.image(
     use_container_width=True,
 )
 
-# 4. 3秒ごとに自動で再読み込み（リアルタイム同期）
-time.sleep(3)
+# 4. リアルタイム自動更新ループ
+# 画面下部にスピナーを表示してスクリプトの停止（スリープ）を防ぐ
+with st.spinner("同期中...（3秒ごとに更新）"):
+    time.sleep(3)
+
+# 画面全体を再読み込みして最新の status.txt を読みに行く
 st.rerun()
