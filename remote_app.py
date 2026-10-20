@@ -13,9 +13,21 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# JavaScript/HTMLによる3秒ごとの強制自動リロード（Streamlit Cloud対応）
+st.components.v1.html(
+    """
+    <script>
+        setTimeout(function(){
+            window.parent.postMessage({type: 'streamlit:rerun'}, '*');
+        }, 3000);
+    </script>
+    """,
+    height=0,
+)
+
 st.title("店舗リアルタイム座席状況（間取り図）")
 
-# 1. GitHub API / Raw ファイル取得設定
+# 1. GitHub Raw ファイル取得設定
 STATUS_URL = (
     "https://raw.githubusercontent.com/mattyo0898/webapppy/main/status.txt"
 )
@@ -24,7 +36,7 @@ STATUS_URL = (
 def fetch_latest_status():
     """GitHubから最新の status.txt を取得（キャッシュ破棄処理付き）"""
     try:
-        # キャッシュバスター（URLにタイムスタンプを付与して常に最新データを取得）
+        # キャッシュバスター（URLにタイムスタンプを付与）
         cache_buster_url = f"{STATUS_URL}?t={int(time.time())}"
         headers = {
             "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -44,7 +56,6 @@ def fetch_latest_status():
                     s.strip().lower() == "true" for s in status_line.split(",")
                 ]
 
-                # 要素数が4つに満たない場合のフォールバック処理
                 while len(statuses) < 4:
                     statuses.append(True)
 
@@ -52,7 +63,6 @@ def fetch_latest_status():
     except Exception as e:
         st.error(f"データ取得エラー: {e}")
 
-    # エラー時は全座席「空席」として初期化
     return [True, True, True, True], "データ取得失敗"
 
 
@@ -78,22 +88,18 @@ for idx, is_empty in enumerate(seat_statuses):
 st.divider()
 
 # 視覚的な間取り図ブロックの描画（背景グラフィック表示）
-floor_plan = np.full((200, 640, 3), 245, dtype=np.uint8)  # 薄いグレー背景
+floor_plan = np.full((200, 640, 3), 245, dtype=np.uint8)
 w_quarter = 640 // 4
 
-# 4つの座席区画と枠線・テキストを描画
 for i in range(4):
     x1 = i * w_quarter
     x2 = (i + 1) * w_quarter
 
-    # 各区画のステータス色設定 (BGR) -> 空席: 緑, 使用中: 赤
     color = (100, 200, 100) if seat_statuses[i] else (100, 100, 230)
 
-    # 席の領域を描画
     cv2.rectangle(floor_plan, (x1 + 10, 20), (x2 - 10, 180), color, -1)
     cv2.rectangle(floor_plan, (x1 + 10, 20), (x2 - 10, 180), (50, 50, 50), 2)
 
-    # 座席ラベルテキスト
     label_text = f"Seat {i + 1}"
     status_text = "EMPTY" if seat_statuses[i] else "OCCUPIED"
 
@@ -116,18 +122,10 @@ for i in range(4):
         2,
     )
 
-# 間取り図画像の表示
+# 間取り図画像の表示（width="stretch" で非推奨警告を防止）
 floor_plan_rgb = cv2.cvtColor(floor_plan, cv2.COLOR_BGR2RGB)
 st.image(
     floor_plan_rgb,
     caption="店舗リアルタイム間取りレイアウト",
-    use_container_width=True,
+    width="stretch",
 )
-
-# 4. リアルタイム自動更新ループ
-# 画面下部にスピナーを表示してスクリプトの停止（スリープ）を防ぐ
-with st.spinner("同期中...（3秒ごとに更新）"):
-    time.sleep(3)
-
-# 画面全体を再読み込みして最新の status.txt を読みに行く
-st.rerun()
