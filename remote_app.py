@@ -1,131 +1,89 @@
-import datetime
+import base64
 import time
-import cv2
-import numpy as np
 import requests
 import streamlit as st
 
 # ページ基本設定
 st.set_page_config(
-    page_title="店舗リアルタイム座席状況",
-    page_icon="🪑",
-    layout="wide",
-    initial_sidebar_state="collapsed",
+    page_title="座席空き状況（店舗用）", page_icon="🪑", layout="centered"
 )
+st.title("🪑 リアルタイム座席空き状況")
 
-# JavaScript/HTMLによる3秒ごとの強制自動リロード（Streamlit Cloud対応）
-st.components.v1.html(
-    """
-    <script>
-        setTimeout(function(){
-            window.parent.postMessage({type: 'streamlit:rerun'}, '*');
-        }, 3000);
-    </script>
-    """,
-    height=0,
-)
-
-st.title("店舗リアルタイム座席状況（間取り図）")
-
-# 1. GitHub Raw ファイル取得設定
-STATUS_URL = (
-    "https://raw.githubusercontent.com/mattyo0898/webapppy/main/status.txt"
-)
+# GitHub APIのURL（RawではなくAPI経由にすることでキャッシュの影響を受けなくする）
+API_URL = "https://api.github.com/repos/mattyo0898/webapppy/contents/status.txt"
 
 
-def fetch_latest_status():
-    """GitHubから最新の status.txt を取得（キャッシュ破棄処理付き）"""
+def fetch_seat_status():
+    """GitHub API経由で status.txt の最新状態を取得（Base64デコード対応）"""
     try:
-        # キャッシュバスター（URLにタイムスタンプを付与）
-        cache_buster_url = f"{STATUS_URL}?t={int(time.time())}"
         headers = {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
+            "Accept": "application/vnd.github.v3+json",
+            "Cache-Control": "no-cache",
         }
-        response = requests.get(cache_buster_url, headers=headers, timeout=3)
+        # タイムスタンプを付与してキャッシュを完全に回避
+        response = requests.get(
+            f"{API_URL}?t={int(time.time())}", headers=headers, timeout=5
+        )
 
         if response.status_code == 200:
-            lines = response.text.strip().split("\n")
-            if lines and len(lines) >= 1:
-                status_line = lines[0]
-                time_line = lines[1] if len(lines) > 1 else "日時情報なし"
+            data = response.json()
+            # GitHub APIは中身をBase64で返してくるのでデコードする
+            file_content = base64.b64decode(data["content"]).decode("utf-8")
+            lines = file_content.strip().split("\n")
 
-                # 'True' / 'False' の文字列を bool 値に変換
-                statuses = [
-                    s.strip().lower() == "true" for s in status_line.split(",")
+            if len(lines) >= 1:
+                # "True, False, True, False" を bool値のリストに変換
+                status_list = [
+                    s.strip().lower() == "true" for s in lines[0].split(",")
                 ]
-
-                while len(statuses) < 4:
-                    statuses.append(True)
-
-                return statuses[:4], time_line
+                last_updated = lines[1] if len(lines) > 1 else "不明"
+                return status_list, last_updated
     except Exception as e:
         st.error(f"データ取得エラー: {e}")
 
-    return [True, True, True, True], "データ取得失敗"
+    return [True] * 4, "取得失敗"
 
 
-# 2. 最新データの取得
-seat_statuses, last_updated_time = fetch_latest_status()
+# 最新状態を取得
+statuses, last_updated_time = fetch_seat_status()
 
 # 最終更新日時の表示
-st.caption(f"最終同期日時: {last_updated_time}")
+st.caption(f"最終更新時刻: {last_updated_time}")
 
-# 3. レイアウト・間取り図表示セクション
-st.subheader("座席配置レイアウト")
+# 座席表示（2×2レイアウト）
+col1, col2 = st.columns(2)
 
-# 4列のレイアウトで各座席のステータスを表示
-cols = st.columns(4)
+with col1:
+    st.subheader("席 1")
+    if statuses[0]:
+        st.success("🟢 空席")
+    else:
+        st.error("🔴 使用中")
 
-for idx, is_empty in enumerate(seat_statuses):
-    with cols[idx]:
-        if is_empty:
-            st.success(f"### Seat {idx + 1}\n\n🟢 **空席**")
-        else:
-            st.error(f"### Seat {idx + 1}\n\n🔴 **使用中**")
+    st.subheader("席 3")
+    if len(statuses) > 2 and statuses[2]:
+        st.success("🟢 空席")
+    else:
+        st.error("🔴 使用中")
+
+with col2:
+    st.subheader("席 2")
+    if len(statuses) > 1 and statuses[1]:
+        st.success("🟢 空席")
+    else:
+        st.error("🔴 使用中")
+
+    st.subheader("席 4")
+    if len(statuses) > 3 and statuses[3]:
+        st.success("🟢 空席")
+    else:
+        st.error("🔴 使用中")
 
 st.divider()
 
-# 視覚的な間取り図ブロックの描画（背景グラフィック表示）
-floor_plan = np.full((200, 640, 3), 245, dtype=np.uint8)
-w_quarter = 640 // 4
+# 画面最下部に自動更新のインジケーターを表示しつつ10秒待機
+with st.spinner("リアルタイム同期中...（10秒ごとに自動更新）"):
+    time.sleep(10)
 
-for i in range(4):
-    x1 = i * w_quarter
-    x2 = (i + 1) * w_quarter
-
-    color = (100, 200, 100) if seat_statuses[i] else (100, 100, 230)
-
-    cv2.rectangle(floor_plan, (x1 + 10, 20), (x2 - 10, 180), color, -1)
-    cv2.rectangle(floor_plan, (x1 + 10, 20), (x2 - 10, 180), (50, 50, 50), 2)
-
-    label_text = f"Seat {i + 1}"
-    status_text = "EMPTY" if seat_statuses[i] else "OCCUPIED"
-
-    cv2.putText(
-        floor_plan,
-        label_text,
-        (x1 + 25, 70),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (255, 255, 255),
-        2,
-    )
-    cv2.putText(
-        floor_plan,
-        status_text,
-        (x1 + 20, 120),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (255, 255, 255),
-        2,
-    )
-
-# 間取り図画像の表示（width="stretch" で非推奨警告を防止）
-floor_plan_rgb = cv2.cvtColor(floor_plan, cv2.COLOR_BGR2RGB)
-st.image(
-    floor_plan_rgb,
-    caption="店舗リアルタイム間取りレイアウト",
-    width="stretch",
-)
+# 強制再起動（ループ処理）
+st.rerun()
