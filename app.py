@@ -87,9 +87,10 @@ if run_camera:
                         st.success(f"🟩 席 {i+1}\n\n空席")
             st.info(f"📊 現在の空席数: **4席中 {seats_vacant.count(True)} 席**")
 
-        # 🎯 状態変更時または30秒ごとに GitHub へ自動 Push
+        # 🎯 状態変更時または 【10秒ごと】 に GitHub へ自動 Push
         current_time = time.time()
-        if seats_vacant != st.session_state.last_seats_status or (current_time - st.session_state.last_update_time > 30):
+        # 30を 10 に変更して、10秒おきに確実に同期するようにしました
+        if seats_vacant != st.session_state.last_seats_status or (current_time - st.session_state.last_update_time > 10):
             with open("status.txt", "w", encoding="utf-8") as f:
                 f.write(f"{', '.join([str(s) for s in seats_vacant])}\n{time.strftime('%Y-%m-%d %H:%M:%S')}")
             
